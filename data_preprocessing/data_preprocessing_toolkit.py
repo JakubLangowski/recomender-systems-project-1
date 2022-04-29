@@ -77,6 +77,7 @@ class DataPreprocessingToolkit(object):
         :return: A DataFrame with fixed date_to.
         :rtype: pd.DataFrame
         """
+        df['date_to'] = df['date_to'].apply(lambda x: x + timedelta(days=1))
         return df
 
     @staticmethod
@@ -85,7 +86,7 @@ class DataPreprocessingToolkit(object):
         Adds length_of_stay column which is the difference between date_from and date_to (in days).
         :return: A DataFrame with added length_of_stay column.
         """
-        df['length_of_stay'] = (df['date_to'] - df['date_from']).dt.days + 1
+        df['length_of_stay'] = (df['date_to'] - df['date_from']).dt.days
         return df
 
     @staticmethod
@@ -139,7 +140,8 @@ class DataPreprocessingToolkit(object):
         :return: A DataFrame with added night_price column.
         :rtype: pd.DataFrame
         """
-        df['night_price'] = df['accommodation_price'] / df['length_of_stay'] / df['n_rooms']
+        df['night_price'] = df['accommodation_price'] / df['length_of_stay']
+        df['night_price'] = df['night_price'] / df['n_rooms']
         df['night_price'] = df['night_price'].round(decimals=2)
         return df
 
@@ -216,20 +218,6 @@ class DataPreprocessingToolkit(object):
 
         grouped = group_reservations.groupby(['group_id'])
 
-        # sum_df = grouped[self.sum_columns].sum()
-        # mean_df = grouped[self.mean_columns].mean()
-        # first_col_df = grouped[self.first_columns].first()
-        # mode_df = pd.DataFrame()
-        # for col in self.mode_columns:
-        #     mode_df[col] = grouped[col].apply(lambda x: x.value_counts().idxmax())
-        #     mode_df[col] = grouped[col].apply(lambda x: x.mode())
-        #
-        # merged_df = pd.merge(sum_df, mean_df, left_index=True, right_index=True)
-        # merged_df = pd.merge(merged_df, mode_df, left_index=True, right_index=True)
-        # merged_df = pd.merge(merged_df, first_col_df, left_index=True, right_index=True)
-        # merged_df = merged_df.reset_index()
-        # group_reservations = merged_df.drop(['group_id'], axis=1)
-
         options = {}
         for col in self.sum_columns:
             options[col] = 'sum'
@@ -244,9 +232,6 @@ class DataPreprocessingToolkit(object):
         group_reservations.reset_index()
 
         df = pd.concat([non_group_reservations, group_reservations])
-        # df = df.reset_index()
-        # display(group_reservations)
-        # display(df)
 
         return df
 
@@ -264,7 +249,6 @@ class DataPreprocessingToolkit(object):
         :rtype: pd.DataFrame
         """
         df['date_from'] = df['date_from'].astype(str).apply(lambda x: x[:10])
-        print()
         df['term'] = df['date_from'].apply(lambda x: self.map_date_to_term(x))
         return df
 
@@ -288,8 +272,16 @@ class DataPreprocessingToolkit(object):
         :return: A DataFrame with the room_segment column.
         :rtype: pd.DataFrame
         """
-        df['room_segment'] = df['room_group_id'].apply(
-            lambda x: self.map_value_to_bucket(x, self.room_segment_buckets))
+        # unique_room_group_id = df['room_group_id'].unique()
+        # avg_room_group_id = dict()
+        temp = df.groupby('room_group_id').agg({
+            'night_price': 'mean'
+        })
+        temp.reset_index(drop=True)
+        temp.columns = ['avg']
+        avg_dict = temp.to_dict('index')
+
+        df['room_segment'] = df['room_group_id'].apply(lambda x: self.map_value_to_bucket(avg_dict[x]['avg'], self.room_segment_buckets))
         return df
 
     def map_npeople_to_npeople_buckets(self, df):
